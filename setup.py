@@ -3,15 +3,15 @@ from setuptools import setup, find_packages
 with open("requirements.txt") as f:
 	install_requires = f.read().strip().split("\n")
 
-# get version from __version__ variable in taxjar_integration/__init__.py
-from taxjar_integration import __version__ as version
+# get version from __version__ variable in taxjar_erpnext/__init__.py
+from taxjar_erpnext import __version__ as version
 
 setup(
-	name="taxjar_integration",
+	name="taxjar_erpnext",
 	version=version,
-	description="Taxjar Integration with ERPNext",
-	author=" Frappe Technologies Pvt. Ltd.",
-	author_email="hello@frappe.io",
+	description="TaxJar Integration with ERPNext - Multi-Company Support",
+	author="Washmore Development",
+	author_email="dev@washmore.app",
 	packages=find_packages(),
 	zip_safe=False,
 	include_package_data=True,

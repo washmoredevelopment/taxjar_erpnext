@@ -4,15 +4,15 @@ include *.json
 include *.md
 include *.py
 include *.txt
-recursive-include taxjar_integration *.css
-recursive-include taxjar_integration *.csv
-recursive-include taxjar_integration *.html
-recursive-include taxjar_integration *.ico
-recursive-include taxjar_integration *.js
-recursive-include taxjar_integration *.json
-recursive-include taxjar_integration *.md
-recursive-include taxjar_integration *.png
-recursive-include taxjar_integration *.py
-recursive-include taxjar_integration *.svg
-recursive-include taxjar_integration *.txt
-recursive-exclude taxjar_integration *.pyc
+recursive-include taxjar_erpnext *.css
+recursive-include taxjar_erpnext *.csv
+recursive-include taxjar_erpnext *.html
+recursive-include taxjar_erpnext *.ico
+recursive-include taxjar_erpnext *.js
+recursive-include taxjar_erpnext *.json
+recursive-include taxjar_erpnext *.md
+recursive-include taxjar_erpnext *.png
+recursive-include taxjar_erpnext *.py
+recursive-include taxjar_erpnext *.svg
+recursive-include taxjar_erpnext *.txt
+recursive-exclude taxjar_erpnext *.pyc

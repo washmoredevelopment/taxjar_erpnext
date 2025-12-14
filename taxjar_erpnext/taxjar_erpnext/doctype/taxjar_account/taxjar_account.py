@@ -1,66 +1,64 @@
-# Copyright (c) 2020, Frappe Technologies Pvt. Ltd. and contributors
+# Copyright (c) 2024, Washmore Development and contributors
 # For license information, please see license.txt
-
 
 import json
 import os
 
 import frappe
+from frappe import _
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 from frappe.model.document import Document
 from frappe.permissions import add_permission, update_permission_property
 
-from taxjar_integration.taxjar_integration.taxjar_integration import get_client
 
+class TaxJarAccount(Document):
+	def validate(self):
+		self.validate_tax_calculation_settings()
 
-class TaxJarSettings(Document):
 	def on_update(self):
-		TAXJAR_CREATE_TRANSACTIONS = self.taxjar_create_transactions
-		TAXJAR_CALCULATE_TAX = self.taxjar_calculate_tax
-		TAXJAR_SANDBOX_MODE = self.is_sandbox
+		self.setup_custom_fields_if_needed()
+
+	def validate_tax_calculation_settings(self):
+		if not self.taxjar_calculate_tax and (self.taxjar_create_transactions or self.is_sandbox):
+			frappe.throw(
+				_(
+					"Before enabling <b>Create Transaction</b> or <b>Sandbox Mode</b>, "
+					"you need to check the <b>Enable Tax Calculation</b> box"
+				)
+			)
+
+	def setup_custom_fields_if_needed(self):
+		"""Setup custom fields when tax calculation is enabled"""
+		if not self.taxjar_calculate_tax:
+			return
 
 		fields_already_exist = frappe.db.exists(
 			"Custom Field",
 			{"dt": ("in", ["Item", "Sales Invoice Item"]), "fieldname": "product_tax_category"},
 		)
-		fields_hidden = frappe.get_value(
-			"Custom Field", {"dt": ("in", ["Sales Invoice Item"])}, "hidden"
-		)
 
-		if TAXJAR_CREATE_TRANSACTIONS or TAXJAR_CALCULATE_TAX or TAXJAR_SANDBOX_MODE:
-			if not fields_already_exist:
-				add_product_tax_categories()
-				make_custom_fields()
-				add_permissions()
-				frappe.enqueue("erpnext.regional.united_states.setup.add_product_tax_categories", now=False)
-
-			elif fields_already_exist and fields_hidden:
-				toggle_tax_category_fields(hidden="0")
-
-		elif fields_already_exist:
-			toggle_tax_category_fields(hidden="1")
-
-	def validate(self):
-		self.calculate_taxes_validation_for_create_transactions()
+		if not fields_already_exist:
+			add_product_tax_categories()
+			make_custom_fields()
+			add_permissions()
 
 	@frappe.whitelist()
 	def update_nexus_list(self):
-		client = get_client()
-		nexus = client.nexus_regions()
+		"""Fetch nexus regions from TaxJar API and update the nexus table"""
+		from taxjar_erpnext.taxjar_erpnext.taxjar_erpnext import get_client
 
+		client = get_client(self.company)
+		if not client:
+			frappe.throw(_("Unable to connect to TaxJar. Please check your API credentials."))
+
+		nexus = client.nexus_regions()
 		new_nexus_list = [frappe._dict(address) for address in nexus]
 
 		self.set("nexus", [])
 		self.set("nexus", new_nexus_list)
 		self.save()
 
-	def calculate_taxes_validation_for_create_transactions(self):
-		if not self.taxjar_calculate_tax and (self.taxjar_create_transactions or self.is_sandbox):
-			frappe.throw(
-				frappe._(
-					"Before enabling <b>Create Transaction</b> or <b>Sandbox Mode</b>, you need to check the <b>Enable Tax Calculation</b> box"
-				)
-			)
+		frappe.msgprint(_("Nexus list updated successfully"), indicator="green")
 
 
 def toggle_tax_category_fields(hidden):
@@ -76,9 +74,21 @@ def toggle_tax_category_fields(hidden):
 
 
 def add_product_tax_categories():
-	with open(os.path.join(os.path.dirname(__file__), "product_tax_category_data.json"), "r") as f:
-		tax_categories = json.loads(f.read())
-	create_tax_categories(tax_categories["categories"])
+	# Look for the data file in the taxjar_settings folder (for backward compatibility)
+	# or in the current folder
+	possible_paths = [
+		os.path.join(os.path.dirname(__file__), "product_tax_category_data.json"),
+		os.path.join(os.path.dirname(__file__), "..", "taxjar_settings", "product_tax_category_data.json"),
+	]
+	
+	for path in possible_paths:
+		if os.path.exists(path):
+			with open(path, "r") as f:
+				tax_categories = json.loads(f.read())
+			create_tax_categories(tax_categories["categories"])
+			return
+	
+	frappe.log_error("product_tax_category_data.json not found", "TaxJar Account Setup")
 
 
 def create_tax_categories(data):

@@ -1,0 +1,19 @@
+[project]
+name = "taxjar_erpnext"
+authors = [
+    { name = "Washmore Development", email = "dev@washmore.app" }
+]
+description = "TaxJar Integration with ERPNext - Multi-Company Support"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "taxjar"
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "taxjar_erpnext"
