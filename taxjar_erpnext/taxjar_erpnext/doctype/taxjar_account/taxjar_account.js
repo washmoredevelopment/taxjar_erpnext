@@ -3,12 +3,11 @@
 
 frappe.ui.form.on('TaxJar Account', {
 	setup: function (frm) {
-		// Filter account fields by company
+		// Filter account fields by company only
 		frm.set_query('tax_account_head', function () {
 			return {
 				filters: {
 					'company': frm.doc.company,
-					'account_type': 'Tax',
 					'is_group': 0
 				}
 			};
