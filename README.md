@@ -41,6 +41,26 @@
 
 TaxJar Integration connects your ERPNext instance with [TaxJar](https://www.taxjar.com/) for automated sales tax calculation and reporting. It handles tax rates, nexus management, and product tax categories to ensure accurate tax compliance.
 
+### Features
+
+**Tax Calculation**
+- Automatic sales tax calculation on Quotations, Sales Orders, and Sales Invoices
+- Nexus-aware — only calculates tax for states where you have nexus configured
+- Product tax categories for different tax rates based on product type
+- Sales tax exemption support at document or customer level
+- Line-item tax breakdown with `tax_collectable` and `taxable_amount` per item
+
+**Transaction Reporting**
+- Creates order transactions in TaxJar when Sales Invoice is submitted
+- Creates refund transactions automatically for return invoices
+- Deletes transactions from TaxJar when Sales Invoice is cancelled
+- Syncs sales data to TaxJar for AutoFile remittance and filing services
+
+**Multi-Company Support**
+- Separate TaxJar accounts per company
+- Independent API credentials, nexus lists, and account mappings
+- Sandbox mode for testing
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- INSTALLATION -->
