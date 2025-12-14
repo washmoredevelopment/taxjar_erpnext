@@ -74,21 +74,14 @@ def toggle_tax_category_fields(hidden):
 
 
 def add_product_tax_categories():
-	# Look for the data file in the taxjar_settings folder (for backward compatibility)
-	# or in the current folder
-	possible_paths = [
-		os.path.join(os.path.dirname(__file__), "product_tax_category_data.json"),
-		os.path.join(os.path.dirname(__file__), "..", "taxjar_settings", "product_tax_category_data.json"),
-	]
+	path = os.path.join(os.path.dirname(__file__), "product_tax_category_data.json")
 	
-	for path in possible_paths:
-		if os.path.exists(path):
-			with open(path, "r") as f:
-				tax_categories = json.loads(f.read())
-			create_tax_categories(tax_categories["categories"])
-			return
-	
-	frappe.log_error("product_tax_category_data.json not found", "TaxJar Account Setup")
+	if os.path.exists(path):
+		with open(path, "r") as f:
+			tax_categories = json.loads(f.read())
+		create_tax_categories(tax_categories["categories"])
+	else:
+		frappe.log_error("product_tax_category_data.json not found", "TaxJar Account Setup")
 
 
 def create_tax_categories(data):
