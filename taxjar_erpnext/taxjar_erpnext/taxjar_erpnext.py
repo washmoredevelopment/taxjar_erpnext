@@ -549,12 +549,28 @@ def check_sales_tax_exemption(doc, taxjar_account):
 	"""
 	TAX_ACCOUNT_HEAD = taxjar_account.tax_account_head
 	
+	# Get customer name:
+	# - Sales Order/Invoice: use customer field directly
+	# - Quotation: use party_name only if quotation_to == "Customer" (not Lead)
+	customer_name = getattr(doc, "customer", None)
+	if not customer_name and doc.doctype == "Quotation":
+		# Only treat party_name as a Customer if quotation_to is "Customer"
+		quotation_to = getattr(doc, "quotation_to", None)
+		if quotation_to == "Customer":
+			customer_name = getattr(doc, "party_name", None)
+	
+	# Check document-level exemption first, then customer-level exemption
 	sales_tax_exempted = (
 		hasattr(doc, "exempt_from_sales_tax")
 		and doc.exempt_from_sales_tax
-		or frappe.db.has_column("Customer", "exempt_from_sales_tax")
-		and frappe.db.get_value("Customer", doc.customer, "exempt_from_sales_tax")
 	)
+	
+	# If not exempt at document level, check customer level
+	if not sales_tax_exempted and customer_name:
+		if frappe.db.has_column("Customer", "exempt_from_sales_tax"):
+			sales_tax_exempted = frappe.db.get_value(
+				"Customer", customer_name, "exempt_from_sales_tax"
+			)
 	
 	if sales_tax_exempted:
 		for tax in doc.taxes:
