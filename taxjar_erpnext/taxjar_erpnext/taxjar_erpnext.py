@@ -394,6 +394,9 @@ def set_sales_tax(doc, method):
 	if not tax_dict:
 		# Remove existing tax rows if address is changed from a taxable state/country
 		setattr(doc, "taxes", [tax for tax in doc.taxes if tax.account_head != TAX_ACCOUNT_HEAD])
+		for item in doc.get("items"):
+			item.tax_collectable = flt(0)
+			item.taxable_amount = flt(0)
 		return
 	
 	# Check if delivering within a nexus
@@ -409,46 +412,83 @@ def set_sales_tax(doc, method):
 			return
 	
 	tax_data = validate_tax_request(doc, tax_dict)
-	if tax_data is not None:
-		if not tax_data.amount_to_collect:
-			setattr(doc, "taxes", [tax for tax in doc.taxes if tax.account_head != TAX_ACCOUNT_HEAD])
-		elif tax_data.amount_to_collect > 0:
-			# Determine if this is a non-nexus estimate
-			is_non_nexus_estimate = (
-				doc.doctype == "Quotation"
-				and not has_nexus
-				and taxjar_account.calculate_tax_for_all_states
-			)
-			description = "Estimated Sales Tax (Nexus Not Established)" if is_non_nexus_estimate else "Sales Tax"
-			
-			# Loop through tax rows for existing Sales Tax entry
-			# If none are found, add a row with the tax amount
-			tax_row_found = False
-			for tax in doc.taxes:
-				if tax.account_head == TAX_ACCOUNT_HEAD:
-					tax.tax_amount = tax_data.amount_to_collect
-					tax.description = description
-					tax_row_found = True
-					doc.run_method("calculate_taxes_and_totals")
-					break
-			
-			if not tax_row_found:
-				doc.append(
-					"taxes",
-					{
-						"charge_type": "Actual",
-						"description": description,
-						"account_head": TAX_ACCOUNT_HEAD,
-						"tax_amount": tax_data.amount_to_collect,
-					},
-				)
-			
-			# Assign values to tax_collectable and taxable_amount fields in sales item table
-			for item in tax_data.breakdown.line_items:
-				doc.get("items")[cint(item.id) - 1].tax_collectable = item.tax_collectable
-				doc.get("items")[cint(item.id) - 1].taxable_amount = item.taxable_amount
-			
+	
+	# Determine if we need to use rate fallback for non-nexus quotes
+	is_non_nexus_quote = (
+		doc.doctype == "Quotation"
+		and not has_nexus
+		and taxjar_account.calculate_tax_for_all_states
+	)
+	
+	# Calculate tax amount
+	tax_amount = 0
+	use_rate_fallback = False
+	
+	if tax_data is not None and tax_data.amount_to_collect > 0:
+		# Normal case: TaxJar returned a tax amount
+		tax_amount = tax_data.amount_to_collect
+	elif is_non_nexus_quote:
+		# Fallback: Use rates_for_location for non-nexus quotes
+		tax_rate = get_tax_rate_for_location(doc, tax_dict)
+		if tax_rate > 0:
+			# Calculate tax on net_total (taxable amount before tax)
+			tax_amount = flt(doc.net_total * tax_rate, 2)
+			use_rate_fallback = True
+	
+	if not tax_amount:
+		# No tax to collect - remove any existing TaxJar tax rows and reset item fields
+		setattr(doc, "taxes", [tax for tax in doc.taxes if tax.account_head != TAX_ACCOUNT_HEAD])
+		for item in doc.get("items"):
+			item.tax_collectable = flt(0)
+			item.taxable_amount = flt(0)
+		return
+	
+	# Determine description based on source
+	if use_rate_fallback:
+		destination_state = tax_dict.get("to_state", "")
+		description = f"Estimated Sales Tax - {destination_state} (Nexus Not Established)"
+	elif is_non_nexus_quote:
+		description = "Estimated Sales Tax (Nexus Not Established)"
+	else:
+		description = "Sales Tax"
+	
+	# Loop through tax rows for existing Sales Tax entry
+	# If none are found, add a row with the tax amount
+	tax_row_found = False
+	for tax in doc.taxes:
+		if tax.account_head == TAX_ACCOUNT_HEAD:
+			tax.tax_amount = tax_amount
+			tax.description = description
+			tax_row_found = True
 			doc.run_method("calculate_taxes_and_totals")
+			break
+	
+	if not tax_row_found:
+		doc.append(
+			"taxes",
+			{
+				"charge_type": "Actual",
+				"description": description,
+				"account_head": TAX_ACCOUNT_HEAD,
+				"tax_amount": tax_amount,
+			},
+		)
+	
+	# Only assign per-item tax breakdown if we have it from tax_for_order
+	# (rates_for_location doesn't provide line-item breakdown)
+	if tax_data and tax_data.amount_to_collect > 0 and hasattr(tax_data, 'breakdown'):
+		for item in tax_data.breakdown.line_items:
+			doc.get("items")[cint(item.id) - 1].tax_collectable = item.tax_collectable
+			doc.get("items")[cint(item.id) - 1].taxable_amount = item.taxable_amount
+	else:
+		# Clear stale line-item tax data when:
+		# - Using rate fallback (rates_for_location doesn't provide per-item breakdown)
+		# - tax_for_order returned data but without breakdown attribute
+		for item in doc.get("items"):
+			item.tax_collectable = flt(0)
+			item.taxable_amount = flt(0)
+	
+	doc.run_method("calculate_taxes_and_totals")
 
 
 def cleanup_taxjar_rows(doc, taxjar_account):
@@ -555,6 +595,55 @@ def validate_tax_request(doc, tax_dict):
 		)
 	else:
 		return tax_data
+
+
+def get_tax_rate_for_location(doc, tax_dict):
+	"""
+	Get tax rate for a location using TaxJar's rates_for_location API.
+	
+	This is used for non-nexus states where tax_for_order returns 0.
+	Note: This does NOT apply product tax category exemptions - it returns
+	the general combined rate for the location.
+	
+	Args:
+		doc: Sales document
+		tax_dict: Tax calculation dictionary with address details
+		
+	Returns:
+		Combined tax rate as decimal (e.g., 0.0825 for 8.25%) or 0 on failure
+	"""
+	client = get_client(doc.company)
+	
+	if not client:
+		return 0
+	
+	try:
+		# Build location details for more accurate rate lookup
+		location_details = {
+			"city": tax_dict.get("to_city"),
+			"state": tax_dict.get("to_state"),
+			"country": tax_dict.get("to_country"),
+		}
+		
+		# Add street address if available for most accurate rate
+		if tax_dict.get("to_street"):
+			location_details["street"] = tax_dict.get("to_street")
+		
+		rates = client.rates_for_location(tax_dict.get("to_zip"), location_details)
+		
+		# combined_rate includes state + county + city + special district rates
+		# Ensure we always return a number, never None
+		if rates and rates.combined_rate is not None:
+			return rates.combined_rate
+		return 0
+		
+	except Exception as err:
+		# Log error but don't block the document
+		frappe.log_error(
+			title="TaxJar Rate Lookup Failed",
+			message=f"Failed to get tax rate for {tax_dict.get('to_zip')}: {str(err)}"
+		)
+		return 0
 
 
 def get_company_address_details(doc):

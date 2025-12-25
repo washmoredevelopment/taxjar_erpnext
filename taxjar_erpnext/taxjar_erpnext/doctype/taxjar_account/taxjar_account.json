@@ -112,7 +112,7 @@
         },
         {
             "default": "0",
-            "description": "When enabled, TaxJar will calculate sales tax for Quotations even in states where nexus is not established. Tax will still only be collected on invoices for nexus states.",
+            "description": "<b>Warning:</b> Tax estimates for non-nexus states use general location rates and do NOT apply product tax category exemptions. Quoted tax amounts may be higher than actual tax collected. This ensures quotes never undercharge for sales tax.",
             "fieldname": "calculate_tax_for_all_states",
             "fieldtype": "Check",
             "label": "Calculate Estimated Tax for All States"
