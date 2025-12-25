@@ -125,7 +125,13 @@ def create_transaction(doc, method):
 		else:
 			client.create_order(tax_dict)
 	except taxjar.exceptions.TaxJarResponseError as err:
-		frappe.throw(_(sanitize_error_response(err)))
+		doc_link = frappe.utils.get_link_to_form(doc.doctype, doc.name)
+		frappe.throw(
+			_("TaxJar transaction creation failed for {0}.<br><br>{1}").format(
+				doc_link, sanitize_error_response(err)
+			),
+			title=_("TaxJar Transaction Error")
+		)
 	except Exception as ex:
 		frappe.log_error(traceback.format_exc(), "TaxJar Transaction Error")
 
@@ -237,11 +243,23 @@ def get_state_code(address, location):
 		State code string
 	"""
 	if address is not None:
+		address_name = address.get("name") or "Unknown"
+		address_link = frappe.utils.get_link_to_form("Address", address_name)
+		
 		state_code = get_iso_3166_2_state_code(address)
 		if state_code not in SUPPORTED_STATE_CODES:
-			frappe.throw(_("Please enter a valid State in the {0} Address").format(location))
+			frappe.throw(
+				_("The state '{0}' in {1} Address {2} is not a supported US state.<br><br>"
+				  "Please enter a valid 2-letter US state code.").format(
+					address.get("state"), location, address_link
+				),
+				title=_("Unsupported State")
+			)
 	else:
-		frappe.throw(_("Please enter a valid State in the {0} Address").format(location))
+		frappe.throw(
+			_("No {0} Address found. Please ensure an address is set.").format(location),
+			title=_("Missing Address")
+		)
 	
 	return state_code
 
@@ -307,7 +325,7 @@ def set_sales_tax(doc, method):
 	if not check_for_nexus(doc, tax_dict, taxjar_account):
 		return
 	
-	tax_data = validate_tax_request(doc.company, tax_dict)
+	tax_data = validate_tax_request(doc, tax_dict)
 	if tax_data is not None:
 		if not tax_data.amount_to_collect:
 			setattr(doc, "taxes", [tax for tax in doc.taxes if tax.account_head != TAX_ACCOUNT_HEAD])
@@ -406,18 +424,18 @@ def check_sales_tax_exemption(doc, taxjar_account):
 	return False
 
 
-def validate_tax_request(company, tax_dict):
+def validate_tax_request(doc, tax_dict):
 	"""
 	Call TaxJar API to calculate tax for an order.
 	
 	Args:
-		company: Company name
+		doc: Sales document (Quotation, Sales Order, Sales Invoice)
 		tax_dict: Tax calculation dictionary
 		
 	Returns:
 		TaxJar tax response or None
 	"""
-	client = get_client(company)
+	client = get_client(doc.company)
 	
 	if not client:
 		return None
@@ -425,7 +443,13 @@ def validate_tax_request(company, tax_dict):
 	try:
 		tax_data = client.tax_for_order(tax_dict)
 	except taxjar.exceptions.TaxJarResponseError as err:
-		frappe.throw(_(sanitize_error_response(err)))
+		doc_link = frappe.utils.get_link_to_form(doc.doctype, doc.name)
+		frappe.throw(
+			_("TaxJar tax calculation failed for {0}.<br><br>{1}").format(
+				doc_link, sanitize_error_response(err)
+			),
+			title=_("TaxJar Calculation Error")
+		)
 	else:
 		return tax_data
 
@@ -443,7 +467,12 @@ def get_company_address_details(doc):
 	company_address_data = get_company_address(doc.company)
 	
 	if not company_address_data or not company_address_data.company_address:
-		frappe.throw(_("Please set a default company address for {0}").format(doc.company))
+		company_link = frappe.utils.get_link_to_form("Company", doc.company)
+		frappe.throw(
+			_("No default address found for company {0}.<br><br>"
+			  "Please set a default company address in the Company settings.").format(company_link),
+			title=_("Missing Company Address")
+		)
 	
 	company_address = frappe.get_doc("Address", company_address_data.company_address)
 	return company_address
@@ -483,15 +512,23 @@ def get_iso_3166_2_state_code(address):
 	
 	country_code = frappe.db.get_value("Country", address.get("country"), "code")
 	
-	error_message = _(
-		"""{0} is not a valid state! Check for typos or enter the ISO code for your state."""
-	).format(address.get("state"))
+	address_name = address.get("name") or "Unknown"
+	address_link = frappe.utils.get_link_to_form("Address", address_name)
 	
 	state = address.get("state")
 	if not state:
-		frappe.throw(_("State is required in the address"))
+		frappe.throw(
+			_("State is required in address {0}.<br><br>"
+			  "Please open the address and add a valid US state code (e.g., TX, CA, FL).").format(address_link),
+			title=_("Missing State in Address")
+		)
 	
 	state = state.upper().strip()
+	
+	error_message = _(
+		"{0} is not a valid state in address {1}.<br><br>"
+		"Check for typos or enter the ISO code for your state (e.g., TX, CA, FL)."
+	).format(state, address_link)
 	
 	# The max length for ISO state codes is 3, excluding the country code
 	if len(state) <= 3:
@@ -504,12 +541,12 @@ def get_iso_3166_2_state_code(address):
 		if address_state in states:
 			return state
 		
-		frappe.throw(_(error_message))
+		frappe.throw(_(error_message), title=_("Invalid State Code"))
 	else:
 		try:
 			lookup_state = pycountry.subdivisions.lookup(state)
 		except LookupError:
-			frappe.throw(_(error_message))
+			frappe.throw(_(error_message), title=_("Invalid State"))
 		else:
 			return lookup_state.code.split("-")[1]
 
