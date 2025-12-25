@@ -168,57 +168,74 @@ def notify_non_nexus_sales_order(doc, method):
 	Create a ToDo notification when a Sales Order is submitted
 	for a state without established nexus.
 	
+	This function is designed to fail silently - notification failures
+	should never block Sales Order submission.
+	
 	Args:
 		doc: Sales Order document
 		method: Hook method name
 	"""
-	taxjar_account = get_taxjar_account(doc.company)
-	
-	if not taxjar_account:
-		return
-	
-	if not taxjar_account.notify_on_non_nexus_sales:
-		return
-	
-	if not taxjar_account.non_nexus_notification_user:
-		return
-	
-	# Get tax data to determine destination state
-	tax_dict = get_tax_data(doc, taxjar_account)
-	if not tax_dict:
-		return
-	
-	# Check if destination has nexus
-	has_nexus = False
-	for nexus in taxjar_account.nexus:
-		if nexus.region_code == tax_dict["to_state"]:
-			has_nexus = True
-			break
-	
-	if has_nexus:
-		return  # No notification needed
-	
-	# Create ToDo for the designated user
-	destination_state = tax_dict.get("to_state", "Unknown")
-	
-	todo = frappe.get_doc({
-		"doctype": "ToDo",
-		"allocated_to": taxjar_account.non_nexus_notification_user,
-		"reference_type": "Sales Order",
-		"reference_name": doc.name,
-		"description": (
-			f"Sales Order {doc.name} has been submitted for {destination_state}, "
-			f"a state without established sales tax nexus for {doc.company}.\n\n"
-			f"Customer: {doc.customer_name}\n"
-			f"Grand Total: {doc.currency} {doc.grand_total:,.2f}\n\n"
-			f"It is recommended to evaluate your business presence in {destination_state} "
-			f"and establish nexus for proper tax filings if applicable."
-		),
-		"status": "Open",
-		"priority": "Medium",
-		"date": frappe.utils.today(),
-	})
-	todo.insert(ignore_permissions=True)
+	try:
+		taxjar_account = get_taxjar_account(doc.company)
+		
+		if not taxjar_account:
+			return
+		
+		if not taxjar_account.notify_on_non_nexus_sales:
+			return
+		
+		if not taxjar_account.non_nexus_notification_user:
+			return
+		
+		# Get tax data to determine destination state
+		# Use a try-except since get_tax_data can throw errors
+		try:
+			tax_dict = get_tax_data(doc, taxjar_account)
+		except Exception:
+			# If we can't get tax data, we can't determine nexus status
+			# Skip notification silently
+			return
+		
+		if not tax_dict:
+			return
+		
+		# Check if destination has nexus
+		has_nexus = False
+		for nexus in taxjar_account.nexus:
+			if nexus.region_code == tax_dict["to_state"]:
+				has_nexus = True
+				break
+		
+		if has_nexus:
+			return  # No notification needed
+		
+		# Create ToDo for the designated user
+		destination_state = tax_dict.get("to_state", "Unknown")
+		
+		todo = frappe.get_doc({
+			"doctype": "ToDo",
+			"allocated_to": taxjar_account.non_nexus_notification_user,
+			"reference_type": "Sales Order",
+			"reference_name": doc.name,
+			"description": (
+				f"Sales Order {doc.name} has been submitted for {destination_state}, "
+				f"a state without established sales tax nexus for {doc.company}.\n\n"
+				f"Customer: {doc.customer_name}\n"
+				f"Grand Total: {doc.currency} {doc.grand_total:,.2f}\n\n"
+				f"It is recommended to evaluate your business presence in {destination_state} "
+				f"and establish nexus for proper tax filings if applicable."
+			),
+			"status": "Open",
+			"priority": "Medium",
+			"date": frappe.utils.today(),
+		})
+		todo.insert(ignore_permissions=True)
+	except Exception:
+		# Log the error but don't block the Sales Order submission
+		frappe.log_error(
+			title="TaxJar Non-Nexus Notification Failed",
+			message=f"Failed to create non-nexus notification for Sales Order {doc.name}"
+		)
 
 
 def get_tax_data(doc, taxjar_account=None):
