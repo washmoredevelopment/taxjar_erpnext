@@ -549,8 +549,15 @@ def check_sales_tax_exemption(doc, taxjar_account):
 	"""
 	TAX_ACCOUNT_HEAD = taxjar_account.tax_account_head
 	
-	# Get customer name - Quotations use party_name, Sales Order/Invoice use customer
-	customer_name = getattr(doc, "customer", None) or getattr(doc, "party_name", None)
+	# Get customer name:
+	# - Sales Order/Invoice: use customer field directly
+	# - Quotation: use party_name only if quotation_to == "Customer" (not Lead)
+	customer_name = getattr(doc, "customer", None)
+	if not customer_name and doc.doctype == "Quotation":
+		# Only treat party_name as a Customer if quotation_to is "Customer"
+		quotation_to = getattr(doc, "quotation_to", None)
+		if quotation_to == "Customer":
+			customer_name = getattr(doc, "party_name", None)
 	
 	# Check document-level exemption first, then customer-level exemption
 	sales_tax_exempted = (
