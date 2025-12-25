@@ -163,6 +163,64 @@ def delete_transaction(doc, method):
 		pass
 
 
+def notify_non_nexus_sales_order(doc, method):
+	"""
+	Create a ToDo notification when a Sales Order is submitted
+	for a state without established nexus.
+	
+	Args:
+		doc: Sales Order document
+		method: Hook method name
+	"""
+	taxjar_account = get_taxjar_account(doc.company)
+	
+	if not taxjar_account:
+		return
+	
+	if not taxjar_account.notify_on_non_nexus_sales:
+		return
+	
+	if not taxjar_account.non_nexus_notification_user:
+		return
+	
+	# Get tax data to determine destination state
+	tax_dict = get_tax_data(doc, taxjar_account)
+	if not tax_dict:
+		return
+	
+	# Check if destination has nexus
+	has_nexus = False
+	for nexus in taxjar_account.nexus:
+		if nexus.region_code == tax_dict["to_state"]:
+			has_nexus = True
+			break
+	
+	if has_nexus:
+		return  # No notification needed
+	
+	# Create ToDo for the designated user
+	destination_state = tax_dict.get("to_state", "Unknown")
+	
+	todo = frappe.get_doc({
+		"doctype": "ToDo",
+		"allocated_to": taxjar_account.non_nexus_notification_user,
+		"reference_type": "Sales Order",
+		"reference_name": doc.name,
+		"description": (
+			f"Sales Order {doc.name} has been submitted for {destination_state}, "
+			f"a state without established sales tax nexus for {doc.company}.\n\n"
+			f"Customer: {doc.customer_name}\n"
+			f"Grand Total: {doc.currency} {doc.grand_total:,.2f}\n\n"
+			f"It is recommended to evaluate your business presence in {destination_state} "
+			f"and establish nexus for proper tax filings if applicable."
+		),
+		"status": "Open",
+		"priority": "Medium",
+		"date": frappe.utils.today(),
+	})
+	todo.insert(ignore_permissions=True)
+
+
 def get_tax_data(doc, taxjar_account=None):
 	"""
 	Build tax data dictionary for TaxJar API call.
@@ -322,20 +380,37 @@ def set_sales_tax(doc, method):
 		return
 	
 	# Check if delivering within a nexus
-	if not check_for_nexus(doc, tax_dict, taxjar_account):
-		return
+	has_nexus = check_for_nexus(doc, tax_dict, taxjar_account, skip_cleanup=True)
+	
+	if not has_nexus:
+		# For Quotations, allow tax calculation if setting is enabled
+		if doc.doctype == "Quotation" and taxjar_account.calculate_tax_for_all_states:
+			pass  # Continue to calculate tax
+		else:
+			# Clean up any existing TaxJar tax rows
+			cleanup_taxjar_rows(doc, taxjar_account)
+			return
 	
 	tax_data = validate_tax_request(doc, tax_dict)
 	if tax_data is not None:
 		if not tax_data.amount_to_collect:
 			setattr(doc, "taxes", [tax for tax in doc.taxes if tax.account_head != TAX_ACCOUNT_HEAD])
 		elif tax_data.amount_to_collect > 0:
+			# Determine if this is a non-nexus estimate
+			is_non_nexus_estimate = (
+				doc.doctype == "Quotation"
+				and not has_nexus
+				and taxjar_account.calculate_tax_for_all_states
+			)
+			description = "Estimated Sales Tax (Nexus Not Established)" if is_non_nexus_estimate else "Sales Tax"
+			
 			# Loop through tax rows for existing Sales Tax entry
 			# If none are found, add a row with the tax amount
 			tax_row_found = False
 			for tax in doc.taxes:
 				if tax.account_head == TAX_ACCOUNT_HEAD:
 					tax.tax_amount = tax_data.amount_to_collect
+					tax.description = description
 					tax_row_found = True
 					doc.run_method("calculate_taxes_and_totals")
 					break
@@ -345,7 +420,7 @@ def set_sales_tax(doc, method):
 					"taxes",
 					{
 						"charge_type": "Actual",
-						"description": "Sales Tax",
+						"description": description,
 						"account_head": TAX_ACCOUNT_HEAD,
 						"tax_amount": tax_data.amount_to_collect,
 					},
@@ -359,7 +434,26 @@ def set_sales_tax(doc, method):
 			doc.run_method("calculate_taxes_and_totals")
 
 
-def check_for_nexus(doc, tax_dict, taxjar_account):
+def cleanup_taxjar_rows(doc, taxjar_account):
+	"""
+	Remove TaxJar tax rows and reset item tax fields.
+	
+	Args:
+		doc: Sales document
+		taxjar_account: TaxJar Account document
+	"""
+	TAX_ACCOUNT_HEAD = taxjar_account.tax_account_head
+	
+	for item in doc.get("items"):
+		item.tax_collectable = flt(0)
+		item.taxable_amount = flt(0)
+	
+	for tax in list(doc.taxes):
+		if tax.account_head == TAX_ACCOUNT_HEAD:
+			doc.taxes.remove(tax)
+
+
+def check_for_nexus(doc, tax_dict, taxjar_account, skip_cleanup=False):
 	"""
 	Check if the destination state has nexus configured for this company.
 	
@@ -367,12 +461,11 @@ def check_for_nexus(doc, tax_dict, taxjar_account):
 		doc: Sales document
 		tax_dict: Tax calculation dictionary
 		taxjar_account: TaxJar Account document
+		skip_cleanup: If True, don't remove tax rows (caller will handle)
 		
 	Returns:
 		True if nexus exists, False otherwise
 	"""
-	TAX_ACCOUNT_HEAD = taxjar_account.tax_account_head
-	
 	# Check nexus in the company's TaxJar Account
 	has_nexus = False
 	for nexus in taxjar_account.nexus:
@@ -380,17 +473,10 @@ def check_for_nexus(doc, tax_dict, taxjar_account):
 			has_nexus = True
 			break
 	
-	if not has_nexus:
-		for item in doc.get("items"):
-			item.tax_collectable = flt(0)
-			item.taxable_amount = flt(0)
-		
-		for tax in list(doc.taxes):
-			if tax.account_head == TAX_ACCOUNT_HEAD:
-				doc.taxes.remove(tax)
-		return False
+	if not has_nexus and not skip_cleanup:
+		cleanup_taxjar_rows(doc, taxjar_account)
 	
-	return True
+	return has_nexus
 
 
 def check_sales_tax_exemption(doc, taxjar_account):
