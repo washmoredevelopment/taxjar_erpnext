@@ -631,7 +631,10 @@ def get_tax_rate_for_location(doc, tax_dict):
 		rates = client.rates_for_location(tax_dict.get("to_zip"), location_details)
 		
 		# combined_rate includes state + county + city + special district rates
-		return rates.combined_rate if rates else 0
+		# Ensure we always return a number, never None
+		if rates and rates.combined_rate is not None:
+			return rates.combined_rate
+		return 0
 		
 	except Exception as err:
 		# Log error but don't block the document
