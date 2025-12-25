@@ -480,9 +480,10 @@ def set_sales_tax(doc, method):
 		for item in tax_data.breakdown.line_items:
 			doc.get("items")[cint(item.id) - 1].tax_collectable = item.tax_collectable
 			doc.get("items")[cint(item.id) - 1].taxable_amount = item.taxable_amount
-	elif use_rate_fallback:
-		# Clear stale line-item tax data when using rate fallback
-		# (rates_for_location doesn't provide per-item breakdown)
+	else:
+		# Clear stale line-item tax data when:
+		# - Using rate fallback (rates_for_location doesn't provide per-item breakdown)
+		# - tax_for_order returned data but without breakdown attribute
 		for item in doc.get("items"):
 			item.tax_collectable = flt(0)
 			item.taxable_amount = flt(0)
