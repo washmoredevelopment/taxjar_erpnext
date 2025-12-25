@@ -19,6 +19,11 @@
         "tax_account_head",
         "configuration_cb",
         "shipping_account_head",
+        "non_nexus_settings_section",
+        "calculate_tax_for_all_states",
+        "non_nexus_column_break",
+        "notify_on_non_nexus_sales",
+        "non_nexus_notification_user",
         "section_break_12",
         "nexus"
     ],
@@ -99,6 +104,38 @@
             "label": "Shipping Account Head",
             "mandatory_depends_on": "taxjar_calculate_tax",
             "options": "Account"
+        },
+        {
+            "fieldname": "non_nexus_settings_section",
+            "fieldtype": "Section Break",
+            "label": "Non-Nexus State Settings"
+        },
+        {
+            "default": "0",
+            "description": "When enabled, TaxJar will calculate sales tax for Quotations even in states where nexus is not established. Tax will still only be collected on invoices for nexus states.",
+            "fieldname": "calculate_tax_for_all_states",
+            "fieldtype": "Check",
+            "label": "Calculate Estimated Tax for All States"
+        },
+        {
+            "fieldname": "non_nexus_column_break",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "0",
+            "description": "Create a ToDo notification when a Sales Order is submitted for a state without established nexus.",
+            "fieldname": "notify_on_non_nexus_sales",
+            "fieldtype": "Check",
+            "label": "Notify User on Non-Nexus Sales Orders"
+        },
+        {
+            "depends_on": "notify_on_non_nexus_sales",
+            "description": "User who will receive ToDo notifications for non-nexus sales orders.",
+            "fieldname": "non_nexus_notification_user",
+            "fieldtype": "Link",
+            "label": "Notification Recipient",
+            "mandatory_depends_on": "notify_on_non_nexus_sales",
+            "options": "User"
         },
         {
             "depends_on": "nexus",

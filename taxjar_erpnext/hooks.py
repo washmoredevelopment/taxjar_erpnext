@@ -16,6 +16,9 @@ doc_events = {
 		"on_submit": "taxjar_erpnext.taxjar_erpnext.taxjar_erpnext.create_transaction",
 		"on_cancel": "taxjar_erpnext.taxjar_erpnext.taxjar_erpnext.delete_transaction"
 	},
+	"Sales Order": {
+		"on_submit": "taxjar_erpnext.taxjar_erpnext.taxjar_erpnext.notify_non_nexus_sales_order"
+	},
 	("Quotation", "Sales Order", "Sales Invoice"): {
 		"validate": ["taxjar_erpnext.taxjar_erpnext.taxjar_erpnext.set_sales_tax"]
 	},
