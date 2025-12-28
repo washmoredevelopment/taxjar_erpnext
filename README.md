@@ -59,7 +59,7 @@ TaxJar Integration connects your ERPNext instance with [TaxJar](https://www.taxj
 - Optional non-nexus calculations.
 - Calculate estimated sales tax for Quotations even in states without nexus
 - Uses TaxJar's `rates_for_location` API for accurate location-based rates
-- Tax rows clearly labeled as "Estimated Sales Tax - {STATE} (Nexus Not Established)"
+- Tax rows labeled as "Estimated Sales Tax" to distinguish from regular tax calculations
 - Ensures quotes never undercharge (estimates may be higher than actual tax due to exemptions not being applied)
 - _Enable via "Calculate Estimated Tax for All States" in TaxJar Account settings_
 

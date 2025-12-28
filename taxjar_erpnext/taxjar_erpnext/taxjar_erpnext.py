@@ -444,11 +444,8 @@ def set_sales_tax(doc, method):
 		return
 	
 	# Determine description based on source
-	if use_rate_fallback:
-		destination_state = tax_dict.get("to_state", "")
-		description = f"Estimated Sales Tax - {destination_state} (Nexus Not Established)"
-	elif is_non_nexus_quote:
-		description = "Estimated Sales Tax (Nexus Not Established)"
+	if use_rate_fallback or is_non_nexus_quote:
+		description = "Estimated Sales Tax"
 	else:
 		description = "Sales Tax"
 	
