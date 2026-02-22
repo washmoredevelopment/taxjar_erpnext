@@ -36,7 +36,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: yarn
 
       - name: Add to hosts
         run: echo "127.0.0.1 test_site" | sudo tee -a /etc/hosts
