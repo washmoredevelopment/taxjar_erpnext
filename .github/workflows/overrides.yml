@@ -1,0 +1,17 @@
+name: Track Overrides
+
+on:
+  pull_request:
+    branches: [version-14, version-15]
+
+jobs:
+  track_overrides:
+    runs-on: ubuntu-latest
+    name: Track Overrides
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Track Overrides
+        uses: agritheory/test_utils/actions/track_overrides@main
+        with:
+          app: taxjar_erpnext
