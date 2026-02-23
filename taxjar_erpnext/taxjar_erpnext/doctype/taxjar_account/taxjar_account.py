@@ -75,9 +75,9 @@ def toggle_tax_category_fields(hidden):
 
 def add_product_tax_categories():
 	path = os.path.join(os.path.dirname(__file__), "product_tax_category_data.json")
-	
+
 	if os.path.exists(path):
-		with open(path, "r") as f:
+		with open(path) as f:
 			tax_categories = json.loads(f.read())
 		create_tax_categories(tax_categories["categories"])
 	else:
