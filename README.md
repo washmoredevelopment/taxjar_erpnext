@@ -103,6 +103,15 @@ TaxJar Integration connects your ERPNext instance with [TaxJar](https://www.taxj
    bench --site your-site.localhost migrate
    ```
 
+### Running tests
+
+Load Ambrosia Pie Company fixture data once on your test site, then run pytest from the bench:
+
+```bash
+bench execute 'taxjar_erpnext.tests.setup.before_test'
+cd frappe-bench && source env/bin/activate && pytest apps/taxjar_erpnext/ --disable-warnings -s -v
+```
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- CONFIGURATION -->
