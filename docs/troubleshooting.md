@@ -3,6 +3,11 @@ For license information, please see license.txt-->
 
 # Troubleshooting and contributing
 
+<div class="byline">
+  Tyler Matteson 2026-04-21
+</div>
+
+
 [← Documentation index](index.md) · [Setup](setup.md) · [Integration](integration.md)
 
 ## Troubleshooting
@@ -10,6 +15,7 @@ For license information, please see license.txt-->
 | Symptom | Things to check |
 |--------|-------------------|
 | No tax calculated | Company region United States; Enable Tax Calculation; items present; not exempt; addresses complete; nexus (unless quotation plus estimate-all-states). |
+| Exemption ignored | ERPNext US regional setup installed; `exempt_from_sales_tax` on document or Customer. |
 | Tax cleared after address change | `get_tax_data` returned `None` (for example missing address or country code); integration removes TaxJar tax rows. |
 | Missing Company Address | Set default company address on Company. |
 | State or ZIP errors | Shipping and company addresses: valid state for country; US state codes where enforced. |
@@ -24,7 +30,14 @@ For license information, please see license.txt-->
 
 - Hooks entry point: [`hooks.py`](../taxjar_erpnext/hooks.py).
 - Whitelisted DocType method: `TaxJar Account.update_nexus_list`.
-- Example tests: [`test_product_tax_category.py`](../taxjar_erpnext/taxjar_erpnext/doctype/product_tax_category/test_product_tax_category.py).
+- Integration tests: [`taxjar_erpnext/tests/`](../taxjar_erpnext/tests/) (`test_sales_tax.py`, `test_taxjar_account.py`).
+- Load fixture data once on a test site, then run pytest from the bench:
+
+  ```bash
+  bench execute 'taxjar_erpnext.tests.setup.before_test'
+  cd frappe-bench && source env/bin/activate && pytest apps/taxjar_erpnext/ --disable-warnings -s -v
+  ```
+
 - CI: [`.github/workflows/`](../.github/workflows/) (lint, pytest, release, and related workflows).
 
 ---

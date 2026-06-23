@@ -3,6 +3,11 @@ For license information, please see license.txt-->
 
 # Setup
 
+<div class="byline">
+  Tyler Matteson 2026-04-21
+</div>
+
+
 [← Documentation index](index.md)
 
 ## Overview
@@ -13,9 +18,9 @@ TaxJar ERPNext connects ERPNext to [TaxJar](https://www.taxjar.com/) for automat
 
 - Automatic sales tax on Quotation, Sales Order, and Sales Invoice (United States companies only; see [Scope](#scope-and-stack) below).
 - Nexus-aware: tax for destinations where nexus is configured on the TaxJar Account.
-- Product tax categories for different rates by product type (via Product Tax Category on items).
-- Sales tax exemption at document or customer level.
-- Line-item breakdown with `tax_collectable` and `taxable_amount` on invoice lines when TaxJar returns a full breakdown.
+- Product tax categories for different rates by product type (set per company on Item Default; see [Product tax categories](#product-tax-categories)).
+- Sales tax exemption at document or customer level (requires ERPNext United States regional fields).
+- Line-item breakdown with `tax_collectable` and `taxable_amount` on **Sales Invoice** lines when TaxJar returns a full breakdown.
 
 ### Multi-company
 
@@ -89,6 +94,20 @@ TaxJar ERPNext connects ERPNext to [TaxJar](https://www.taxjar.com/) for automat
 - Default company address: `set_sales_tax` and `get_tax_data` resolve the ship-from address via `get_company_address`. If none is set, users see a missing company address error ([`get_company_address_details`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py)).
 - Destination address: prefer Shipping Address on the document; otherwise Customer Address; if neither is set, the company address is used as a fallback ([`get_shipping_address_details`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py)).
 - Valid state data: states must resolve to supported codes (see [Limitations](integration.md#limitations-and-operational-notes) on the integration page). Address validation uses `pycountry` in `get_iso_3166_2_state_code`.
+- Sales tax exemption fields: document and customer `exempt_from_sales_tax` come from ERPNext’s United States regional setup (`erpnext.regional.united_states.setup`). Run that setup (or install ERPNext with US regional data) before relying on exemption checks.
+
+---
+
+## Behavior by document type
+
+| Scenario | Quotation | Sales Order | Sales Invoice |
+|----------|-----------|-------------|---------------|
+| Nexus destination | Sales Tax calculated | Sales Tax calculated | Sales Tax calculated; line breakdown on invoice rows |
+| Non-nexus destination | Estimated Sales Tax when enabled | No tax | No tax |
+| Non-nexus notification | — | ToDo when enabled | — |
+| TaxJar transaction sync | — | — | On submit / cancel when enabled |
+
+See [Integration](integration.md#behavior-by-document-type) for hook-level detail.
 
 ---
 
@@ -98,7 +117,7 @@ TaxJar ERPNext connects ERPNext to [TaxJar](https://www.taxjar.com/) for automat
 
 - Open TaxJar Account in ERPNext.
 - Create a TaxJar Account for each Company that will use TaxJar.
-- Enable Enable Tax Calculation and enter Live API Key, or enable Sandbox Mode and enter Sandbox API Key.
+- Enable **Enable Tax Calculation** first, then enter Live API Key or enable Sandbox Mode and enter Sandbox API Key. Sandbox Mode and Create TaxJar Transaction cannot be saved unless Enable Tax Calculation is checked.
 - Set Tax Account Head and Shipping Account Head to the correct company accounts. The form only lists non-group accounts for that company ([`taxjar_account.js`](../taxjar_erpnext/taxjar_erpnext/doctype/taxjar_account/taxjar_account.js)).
 
 The integration reads the selling document’s taxes table: amounts on the row whose account is Tax Account Head are treated as sales tax for TaxJar and for transaction sync. Amounts on the row whose account is Shipping Account Head are treated as shipping in the TaxJar payload.
@@ -123,8 +142,9 @@ For tax estimates on Quotations in states where there is no nexus:
 
 ### Product tax categories
 
-- Open the Product Tax Category list (categories may be pre-seeded when tax calculation is first enabled).
+- Open the Product Tax Category list. Categories are seeded on app install and when tax calculation is first enabled on a TaxJar Account (if the list is empty).
 - Add or adjust rows so Product Tax Code matches TaxJar’s product tax codes.
-- On each Item, set Product Tax Category so selling lines send the correct code to TaxJar.
+- On each Item, open **Item Defaults** and set **Product Tax Category** for each company that sells the item. This is the primary path for multi-company setups; the Item-level field is optional.
+- Different product tax codes on the same document (for example taxable and exempt lines) are supported; TaxJar may return tax on some lines only.
 
 For hook timing, nexus logic, and API details, see [Integration](integration.md).

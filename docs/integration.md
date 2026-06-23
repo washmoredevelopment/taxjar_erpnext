@@ -3,6 +3,11 @@ For license information, please see license.txt-->
 
 # Integration
 
+<div class="byline">
+  Tyler Matteson 2026-04-21
+</div>
+
+
 [← Documentation index](index.md) · [Setup](setup.md)
 
 ## Architecture overview
@@ -56,7 +61,7 @@ flowchart LR
 - Location: [`doctype/taxjar_account/`](../taxjar_erpnext/taxjar_erpnext/doctype/taxjar_account/)
 - Naming: one document per Company (`autoname` on `company`).
 - Main fields:
-  - Enable Tax Calculation — required for the app to treat this account as active (`get_taxjar_account`).
+  - Enable Tax Calculation — required for the app to treat this account as active (`get_taxjar_account`). Must be enabled before Sandbox Mode or Create TaxJar Transaction can be saved (`validate_tax_calculation_settings`).
   - Sandbox Mode — uses sandbox API URL and Sandbox API Key when enabled; otherwise Live API Key.
   - Create TaxJar Transaction — when enabled, submitted Sales Invoices create TaxJar orders or refunds (subject to further checks in code).
   - Tax Account Head and Shipping Account Head — GL accounts used to identify sales tax and shipping amounts in the document taxes table for TaxJar payloads and transaction totals (see [Setup](setup.md) for a posting example).
@@ -73,22 +78,41 @@ flowchart LR
 ### Product Tax Category
 
 - Location: [`doctype/product_tax_category/`](../taxjar_erpnext/taxjar_erpnext/doctype/product_tax_category/)
-- Maps Product Tax Code (TaxJar) to a name and description. Default categories are seeded from [`product_tax_category_data.json`](../taxjar_erpnext/taxjar_erpnext/doctype/taxjar_account/product_tax_category_data.json) when the app is installed (`after_install` in [`hooks.py`](../taxjar_erpnext/hooks.py) → [`install.py`](../taxjar_erpnext/install.py)); rows that already exist for a given product tax code are skipped.
+- Maps Product Tax Code (TaxJar) to a name and description. Default categories are seeded from [`product_tax_category_data.json`](../taxjar_erpnext/taxjar_erpnext/doctype/taxjar_account/product_tax_category_data.json):
+  - On app install (`after_install` in [`hooks.py`](../taxjar_erpnext/hooks.py) → [`install.py`](../taxjar_erpnext/install.py)).
+  - When a TaxJar Account is saved with Enable Tax Calculation and no Product Tax Category rows exist yet (`setup_product_tax_categories_if_needed` in [`taxjar_account.py`](../taxjar_erpnext/taxjar_erpnext/doctype/taxjar_account/taxjar_account.py)).
+- Rows that already exist for a given product tax code are skipped in both paths.
 
 ---
 
 ## Custom fields and data model
 
-Custom fields are defined under [`taxjar_erpnext/taxjar_erpnext/custom/`](../taxjar_erpnext/taxjar_erpnext/custom/) (`item.json`, `sales_invoice_item.json`) with `sync_on_migrate: 1`, so they load on `bench migrate` like other Frappe app customizations and are checked by this repo’s `validate_customizations` pre-commit hook.
+Custom fields are defined under [`taxjar_erpnext/taxjar_erpnext/custom/`](../taxjar_erpnext/taxjar_erpnext/custom/) (`item.json`, `item_default.json`, `sales_invoice_item.json`) with `sync_on_migrate: 1`, so they load on `bench migrate` like other Frappe app customizations and are checked by this repo’s `validate_customizations` pre-commit hook.
 
 | DocType | Fields added |
 |---------|----------------|
 | Item | `product_tax_category` — Link to Product Tax Category |
-| Sales Invoice Item | `product_tax_category` (fetch from `item_code.product_tax_category`), `tax_collectable`, `taxable_amount` (read-only currency) |
+| Item Default | `product_tax_category` — Link to Product Tax Category (per company; preferred for multi-company setups) |
+| Sales Invoice Item | `product_tax_category`, `tax_collectable`, `taxable_amount` (read-only currency) |
 
-Product tax codes sent to TaxJar come from each line’s `product_tax_category` value (linked category code in `get_line_item_dict`, [`taxjar_erpnext.py`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py)).
+### Product tax category resolution
 
-Per-line tax breakdown: `tax_collectable` and `taxable_amount` are filled only when `tax_for_order` returns a response with a `breakdown.line_items` structure. The non-nexus quotation path using `rates_for_location` does not provide line-level detail; those item fields are cleared in that case.
+Product tax codes sent to TaxJar are resolved in [`resolve_product_tax_category`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py):
+
+1. Use the value on the selling line, if set.
+2. Otherwise look up the company’s **Item Default** for the item code (`get_item_defaults`).
+
+On Sales Invoice `validate`, blank line values are backfilled from that lookup before the TaxJar API call.
+
+For multi-company deployments, set **Product Tax Category** on each item’s **Item Default** row for the relevant company. The Item-level field remains available but Item Default is the primary per-company path.
+
+### Mixed carts and partial line tax
+
+When lines carry different product tax codes, `tax_for_order` can return tax on some lines only (for example taxable prepared food alongside an exempt grocery category). The document tax row reflects the total collectable amount; per-line `tax_collectable` and `taxable_amount` on Sales Invoice Item rows mirror TaxJar’s breakdown when present.
+
+### Per-line tax fields
+
+`tax_collectable` and `taxable_amount` exist only on **Sales Invoice Item** (custom fields). They are filled when `tax_for_order` returns a `breakdown.line_items` structure. The non-nexus quotation path using `rates_for_location` does not provide line-level detail; those fields are cleared on Sales Invoice lines in that case. Quotation and Sales Order lines receive document-level tax only (no persisted line breakdown fields).
 
 ---
 
@@ -103,7 +127,17 @@ The function returns immediately when:
 - No enabled TaxJar Account exists for `doc.company`.
 - Company region is not United States.
 - There are no items.
-- Sales tax exemption applies ([`check_sales_tax_exemption`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py)): document `exempt_from_sales_tax` and/or Customer `exempt_from_sales_tax` (if the Customer field exists). For Quotation, customer-level exemption uses `party_name` only when Quotation To is Customer (not Lead).
+- Sales tax exemption applies ([`check_sales_tax_exemption`](../taxjar_erpnext/taxjar_erpnext/taxjar_erpnext.py)): document `exempt_from_sales_tax` and/or Customer `exempt_from_sales_tax` (if the Customer column exists). These fields come from ERPNext’s United States regional setup, not from this app’s custom fields. For Quotation, customer-level exemption uses `party_name` only when Quotation To is Customer (not Lead).
+
+### Behavior by document type
+
+| Scenario | Quotation | Sales Order | Sales Invoice |
+|----------|-----------|-------------|---------------|
+| Nexus destination, tax applies | Sales Tax row; line breakdown when TaxJar provides it | Sales Tax row | Sales Tax row; `tax_collectable` / `taxable_amount` on lines |
+| Non-nexus destination | Estimated Sales Tax when Calculate Estimated Tax for All States is enabled | No tax row | No tax row |
+| Non-nexus Sales Order notification | — | ToDo when enabled | — |
+| TaxJar transaction sync | — | — | On submit / cancel when Create TaxJar Transaction is enabled |
+| Mixed product tax codes | Document total from TaxJar; no persisted line fields | Same | Per-line breakdown when TaxJar provides it |
 
 ### Nexus gating
 
@@ -141,6 +175,7 @@ Behavior:
 
 - Normal invoice: `client.create_order(...)`.
 - Return invoice (`is_return`): `client.create_refund(...)`.
+- Submitted invoices include per-line `sales_tax` in the payload from each line’s `tax_collectable` (`get_line_item_dict` when `docstatus == 1`).
 
 On `TaxJarResponseError`, submission fails with a sanitized message (`sanitize_error_response`).
 
@@ -161,5 +196,5 @@ When Notify User on Non-Nexus Sales Orders and Notification Recipient are set, S
 - US-only for automatic calculation: non–United States companies skip `set_sales_tax` logic even if a TaxJar Account exists.
 - Transaction creation requires tax on the configured account: if there is no tax amount on Tax Account Head, `create_transaction` returns without calling TaxJar.
 - Non-nexus quotation estimates may overstate tax (no product-level exemption in the `rates_for_location` path); see DocType help text on Calculate Estimated Tax for All States.
-- Line-item breakdown on rows depends on TaxJar `tax_for_order` breakdown; otherwise item tax fields are zeroed.
+- Line-item breakdown on Sales Invoice Item rows depends on TaxJar `tax_for_order` breakdown; otherwise those fields are zeroed.
 - `get_taxjar_account` is shared: disabling Enable Tax Calculation removes the account from lookup, which disables the API client for that company and prevents transaction hooks from finding configuration.
