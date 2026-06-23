@@ -41,5 +41,8 @@ def db_instance():
 
 	frappe.init(site=currentsite, sites_path=sites)
 	frappe.connect()
+	from taxjar_erpnext.tests.setup import before_test
+
+	before_test()
 	frappe.db.commit = MagicMock()
 	yield frappe.db

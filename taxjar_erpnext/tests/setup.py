@@ -3,44 +3,68 @@
 
 import frappe
 from erpnext.setup.utils import enable_all_roles_and_domains, set_defaults_for_tests
+from erpnext.stock.doctype.item.item import set_item_default
 from test_utils.utils.setup_fixtures import (
 	before_test as load_company,
 	create_item_groups,
 	get_fixtures_data_from_file,
 )
 
-from taxjar_erpnext.tests.constants import (
+from taxjar_erpnext.tests.fixtures import (
 	COMPANY,
 	CUSTOMER_MA,
-	CUSTOMER_NH,
+	CUSTOMER_WA,
+	EXEMPT_ITEM,
+	EXEMPT_TAX_CODE,
 	PIE_ITEM,
+	PIE_TAX_CODE,
+	SHIPPING_WA,
 )
 
 
 def before_test():
 	frappe.clear_cache()
 	load_company(COMPANY)
-	enable_all_roles_and_domains()
-	set_defaults_for_tests()
-	ensure_us_regional_fields()
-	frappe.db.set_default("company", COMPANY)
+	ensure_ambrosia_company(COMPANY)
 
 	settings = frappe._dict(
 		company=COMPANY,
 		day=frappe.utils.getdate().replace(month=1, day=1),
 	)
 
+	enable_all_roles_and_domains()
+	set_defaults_for_tests()
+	ensure_us_regional_fields()
+	frappe.db.set_default("company", COMPANY)
+
 	create_company_address()
 	create_item_groups(settings)
 	create_pie_items(settings)
+	create_exempt_grocery_item(settings)
 	create_test_customers(settings)
 	ensure_stock_for_pies(settings)
+	ensure_stock_for_exempt_item(settings)
 	create_taxjar_account(settings)
+	assign_item_product_tax_categories(settings)
 
 	for module in frappe.get_all("Module Onboarding"):
 		frappe.db.set_value("Module Onboarding", module, "is_complete", 1)
 
 	frappe.db.commit()
+
+
+def ensure_ambrosia_company(company):
+	if frappe.db.exists("Company", company):
+		return
+
+	doc = frappe.new_doc("Company")
+	doc.company_name = company
+	doc.abbr = "APC"
+	doc.default_currency = "USD"
+	doc.country = "United States"
+	doc.create_chart_of_accounts_based_on = "Standard Template"
+	doc.chart_of_accounts = "Standard with Numbers"
+	doc.insert(ignore_permissions=True)
 
 
 def ensure_us_regional_fields():
@@ -63,14 +87,45 @@ def create_company_address():
 		if not company_links:
 			continue
 
-		if frappe.db.exists("Address", {"address_line1": address.get("address_line1")}):
+		existing = frappe.db.get_value(
+			"Dynamic Link",
+			{
+				"link_doctype": "Company",
+				"link_name": COMPANY,
+				"parenttype": "Address",
+			},
+			"parent",
+		)
+		if existing:
+			set_default_company_address(existing)
 			return
 
 		addr = frappe.new_doc("Address")
 		addr.update({key: value for key, value in address.items() if key != "links"})
 		addr.set("links", company_links)
 		addr.insert(ignore_permissions=True)
+		set_default_company_address(addr.name)
 		return
+
+
+def set_default_company_address(address_name):
+	address = frappe.get_doc("Address", address_name)
+	if address.is_primary_address:
+		return
+
+	frappe.db.sql(
+		"""
+		UPDATE tabAddress
+		SET is_primary_address = 0
+		WHERE name IN (
+			SELECT parent FROM `tabDynamic Link`
+			WHERE link_doctype = 'Company' AND link_name = %s AND parenttype = 'Address'
+		)
+		""",
+		COMPANY,
+	)
+	address.is_primary_address = 1
+	address.save(ignore_permissions=True)
 
 
 def default_warehouse(company=COMPANY):
@@ -123,10 +178,35 @@ def create_pie_items(settings):
 		doc.insert(ignore_permissions=True)
 
 
+def create_exempt_grocery_item(settings):
+	warehouse = default_warehouse(settings.company)
+	income_account = frappe.get_value("Company", settings.company, "default_income_account")
+
+	if frappe.db.exists("Item", EXEMPT_ITEM):
+		return
+
+	doc = frappe.new_doc("Item")
+	doc.item_code = EXEMPT_ITEM
+	doc.item_name = EXEMPT_ITEM
+	doc.item_group = "Baked Goods"
+	doc.stock_uom = "Nos"
+	doc.is_stock_item = 1
+	doc.is_sales_item = 1
+	doc.append(
+		"item_defaults",
+		{
+			"company": settings.company,
+			"default_warehouse": warehouse,
+			"income_account": income_account,
+		},
+	)
+	doc.insert(ignore_permissions=True)
+
+
 def create_test_customers(settings):
 	from erpnext.accounts.party import get_party_account
 
-	test_customers = (CUSTOMER_MA, CUSTOMER_NH)
+	test_customers = (CUSTOMER_MA, CUSTOMER_WA)
 
 	for customer in get_fixtures_data_from_file("customers.json"):
 		customer_name = customer.get("customer_name")
@@ -135,6 +215,14 @@ def create_test_customers(settings):
 
 		cust = frappe.new_doc("Customer")
 		cust.update({key: value for key, value in customer.items() if key not in ("user", "email")})
+		cust.insert(ignore_permissions=True)
+
+	if not frappe.db.exists("Customer", CUSTOMER_WA):
+		cust = frappe.new_doc("Customer")
+		cust.customer_name = CUSTOMER_WA
+		cust.customer_type = "Company"
+		cust.customer_group = "Commercial"
+		cust.territory = "United States"
 		cust.insert(ignore_permissions=True)
 
 	for customer_name in test_customers:
@@ -158,6 +246,28 @@ def create_test_customers(settings):
 		addr.set("links", customer_links)
 		addr.insert(ignore_permissions=True)
 
+	if not frappe.db.exists("Address", SHIPPING_WA):
+		existing = frappe.db.get_value(
+			"Address",
+			{"address_title": CUSTOMER_WA, "city": "Seattle", "state": "WA"},
+			"name",
+		)
+		if existing:
+			frappe.rename_doc("Address", existing, SHIPPING_WA, force=True)
+		else:
+			addr = frappe.new_doc("Address")
+			addr.address_title = CUSTOMER_WA
+			addr.address_type = "Shipping"
+			addr.address_line1 = "1200 Pike Street"
+			addr.city = "Seattle"
+			addr.state = "WA"
+			addr.pincode = "98101"
+			addr.country = "United States"
+			addr.append("links", {"link_doctype": "Customer", "link_name": CUSTOMER_WA})
+			addr.insert(ignore_permissions=True)
+			if addr.name != SHIPPING_WA:
+				frappe.rename_doc("Address", addr.name, SHIPPING_WA, force=True)
+
 
 def ensure_stock_for_pies(settings):
 	warehouse = default_warehouse(settings.company)
@@ -178,6 +288,32 @@ def ensure_stock_for_pies(settings):
 	)
 	stock_entry.insert(ignore_permissions=True)
 	stock_entry.submit()
+
+
+def ensure_stock_for_exempt_item(settings):
+	warehouse = default_warehouse(settings.company)
+	if frappe.db.get_value("Bin", {"item_code": EXEMPT_ITEM, "warehouse": warehouse}, "actual_qty"):
+		return
+
+	stock_entry = frappe.new_doc("Stock Entry")
+	stock_entry.stock_entry_type = "Material Receipt"
+	stock_entry.company = settings.company
+	stock_entry.append(
+		"items",
+		{
+			"item_code": EXEMPT_ITEM,
+			"qty": 100,
+			"t_warehouse": warehouse,
+			"basic_rate": 6,
+		},
+	)
+	stock_entry.insert(ignore_permissions=True)
+	stock_entry.submit()
+
+
+def assign_item_product_tax_categories(settings):
+	set_item_default(PIE_ITEM, settings.company, "product_tax_category", PIE_TAX_CODE)
+	set_item_default(EXEMPT_ITEM, settings.company, "product_tax_category", EXEMPT_TAX_CODE)
 
 
 def get_or_create_account(account_name, root_type, account_type=None, parent_account=None):

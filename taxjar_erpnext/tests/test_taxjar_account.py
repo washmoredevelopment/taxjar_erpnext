@@ -4,10 +4,9 @@
 import frappe
 import pytest
 
-from taxjar_erpnext.tests.constants import COMPANY
+from taxjar_erpnext.tests.fixtures import COMPANY
 from taxjar_erpnext.taxjar_erpnext.doctype.taxjar_account.taxjar_account import (
 	add_product_tax_categories,
-	make_custom_fields,
 )
 
 
@@ -32,19 +31,29 @@ def test_taxjar_account_requires_calculation_before_sandbox_or_transactions():
 
 
 @pytest.mark.order(90)
-def test_product_tax_categories_and_custom_fields_are_created():
-	"""
-	Enabling tax calculation seeds Product Tax Category rows and Item / SI custom fields.
-	"""
+def test_product_tax_categories_are_seeded():
+	"""Enabling tax calculation seeds Product Tax Category rows from fixture data."""
 	add_product_tax_categories()
-	make_custom_fields(update=True)
 
+	assert frappe.db.count("Product Tax Category") > 0
+
+
+@pytest.mark.order(91)
+def test_custom_fields_are_defined_in_json():
+	"""Item Default and Sales Invoice Item custom fields are synced from app JSON on migrate."""
 	assert frappe.db.exists(
 		"Custom Field",
 		{"dt": "Sales Invoice Item", "fieldname": "product_tax_category"},
 	)
 	assert frappe.db.exists(
 		"Custom Field",
-		{"dt": "Item", "fieldname": "product_tax_category"},
+		{"dt": "Sales Invoice Item", "fieldname": "tax_collectable"},
 	)
-	assert frappe.db.count("Product Tax Category") > 0
+	assert frappe.db.exists(
+		"Custom Field",
+		{"dt": "Sales Invoice Item", "fieldname": "taxable_amount"},
+	)
+	assert frappe.db.exists(
+		"Custom Field",
+		{"dt": "Item Default", "fieldname": "product_tax_category"},
+	)

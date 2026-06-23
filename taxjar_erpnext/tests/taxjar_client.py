@@ -4,7 +4,7 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from taxjar_erpnext.tests.constants import COMPANY
+from taxjar_erpnext.tests.fixtures import COMPANY
 
 
 def make_tax_for_order_response(amount_to_collect=1.92, line_items=None):
@@ -16,6 +16,16 @@ def make_tax_for_order_response(amount_to_collect=1.92, line_items=None):
 	return SimpleNamespace(
 		amount_to_collect=amount_to_collect,
 		breakdown=SimpleNamespace(line_items=line_items),
+	)
+
+
+def make_mixed_cart_tax_response():
+	return make_tax_for_order_response(
+		amount_to_collect=1.92,
+		line_items=[
+			SimpleNamespace(id=1, tax_collectable=1.92, taxable_amount=24.00),
+			SimpleNamespace(id=2, tax_collectable=0, taxable_amount=0),
+		],
 	)
 
 

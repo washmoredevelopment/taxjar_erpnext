@@ -5,8 +5,9 @@ import frappe
 from frappe.utils import flt
 
 from taxjar_erpnext.taxjar_erpnext.taxjar_erpnext import set_sales_tax
-from taxjar_erpnext.tests.constants import (
+from taxjar_erpnext.tests.fixtures import (
 	COMPANY,
+	EXEMPT_ITEM,
 	PIE_ITEM,
 )
 from taxjar_erpnext.tests.setup import default_warehouse
@@ -19,7 +20,26 @@ def append_pie_line(doc, rate=24.00):
 	doc.append("items", row)
 
 
-def make_quotation(customer, shipping_address_name, rate=24.00):
+def append_exempt_line(doc, rate=12.00):
+	row = {"item_code": EXEMPT_ITEM, "qty": 1, "rate": rate}
+	if doc.doctype in ("Sales Order", "Sales Invoice"):
+		row["warehouse"] = default_warehouse(COMPANY)
+	doc.append("items", row)
+
+
+def append_mixed_cart(doc, pie_rate=24.00, exempt_rate=12.00):
+	append_pie_line(doc, rate=pie_rate)
+	append_exempt_line(doc, rate=exempt_rate)
+
+
+def find_item_row(doc, item_code):
+	for row in doc.items:
+		if row.item_code == item_code:
+			return row
+	return None
+
+
+def make_quotation(customer, shipping_address_name, rate=24.00, mixed_cart=False):
 	doc = frappe.new_doc("Quotation")
 	doc.company = COMPANY
 	doc.quotation_to = "Customer"
@@ -27,27 +47,36 @@ def make_quotation(customer, shipping_address_name, rate=24.00):
 	doc.shipping_address_name = shipping_address_name
 	doc.transaction_date = frappe.utils.today()
 	doc.valid_till = frappe.utils.add_days(frappe.utils.today(), 30)
-	append_pie_line(doc, rate=rate)
+	if mixed_cart:
+		append_mixed_cart(doc, pie_rate=rate)
+	else:
+		append_pie_line(doc, rate=rate)
 	return doc
 
 
-def make_sales_order(customer, shipping_address_name, rate=24.00):
+def make_sales_order(customer, shipping_address_name, rate=24.00, mixed_cart=False):
 	doc = frappe.new_doc("Sales Order")
 	doc.company = COMPANY
 	doc.customer = customer
 	doc.delivery_date = frappe.utils.add_days(frappe.utils.today(), 7)
 	doc.shipping_address_name = shipping_address_name
-	append_pie_line(doc, rate=rate)
+	if mixed_cart:
+		append_mixed_cart(doc, pie_rate=rate)
+	else:
+		append_pie_line(doc, rate=rate)
 	return doc
 
 
-def make_sales_invoice(customer, shipping_address_name, rate=24.00):
+def make_sales_invoice(customer, shipping_address_name, rate=24.00, mixed_cart=False):
 	doc = frappe.new_doc("Sales Invoice")
 	doc.company = COMPANY
 	doc.customer = customer
 	doc.due_date = frappe.utils.add_days(frappe.utils.today(), 30)
 	doc.shipping_address_name = shipping_address_name
-	append_pie_line(doc, rate=rate)
+	if mixed_cart:
+		append_mixed_cart(doc, pie_rate=rate)
+	else:
+		append_pie_line(doc, rate=rate)
 	return doc
 
 
