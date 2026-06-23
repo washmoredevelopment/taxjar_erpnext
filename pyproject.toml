@@ -1,6 +1,6 @@
 [project]
 name = "taxjar_erpnext"
-version = "1.0.0"
+version = "1.1.0"
 description = "TaxJar Integration with ERPNext - Multi-Company Support"
 authors = [
     { name = "Washmore Development", email = "dev@washmore.app" }
