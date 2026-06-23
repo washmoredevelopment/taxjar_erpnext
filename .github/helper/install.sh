@@ -55,3 +55,7 @@ echo "BENCH VERSION NUMBERS:"
 bench version
 echo "SITE LIST-APPS:"
 bench list-apps
+
+bench start &> bench_run_logs.txt &
+sleep 10
+CI=Yes bench execute 'taxjar_erpnext.tests.setup.before_test'

@@ -17,6 +17,7 @@ from frappe.contacts.doctype.address.address import get_company_address
 from frappe.utils import cint, flt
 
 from erpnext import get_region
+from erpnext.stock.doctype.item.item import get_item_defaults
 
 SUPPORTED_COUNTRY_CODES = [
 	"AT",
@@ -359,7 +360,7 @@ def get_tax_data(doc, taxjar_account=None):
 
 	shipping = sum([tax.tax_amount for tax in doc.taxes if tax.account_head == SHIP_ACCOUNT_HEAD])
 
-	line_items = [get_line_item_dict(item, doc.docstatus) for item in doc.items]
+	line_items = [get_line_item_dict(item, doc.docstatus, doc.company) for item in doc.items]
 
 	if from_shipping_state not in SUPPORTED_STATE_CODES:
 		from_shipping_state = get_state_code(from_address, "Company")
@@ -419,13 +420,25 @@ def get_state_code(address, location):
 	return state_code
 
 
-def get_line_item_dict(item, docstatus):
+def resolve_product_tax_category(item, company):
+	category = item.get("product_tax_category")
+	if category:
+		return category
+
+	if item.get("item_code") and company:
+		return get_item_defaults(item.item_code, company).get("product_tax_category")
+
+	return None
+
+
+def get_line_item_dict(item, docstatus, company=None):
 	"""
 	Build line item dictionary for TaxJar API.
 
 	Args:
 	        item: Sales document item row
 	        docstatus: Document status (0=Draft, 1=Submitted)
+	        company: Company for Item Default lookup
 
 	Returns:
 	        Line item dictionary
@@ -434,7 +447,7 @@ def get_line_item_dict(item, docstatus):
 		id=item.get("idx"),
 		quantity=item.get("qty"),
 		unit_price=item.get("rate"),
-		product_tax_code=item.get("product_tax_category"),
+		product_tax_code=resolve_product_tax_category(item, company),
 	)
 
 	if docstatus == 1:
@@ -468,6 +481,13 @@ def set_sales_tax(doc, method):
 
 	if check_sales_tax_exemption(doc, taxjar_account):
 		return
+
+	if doc.doctype == "Sales Invoice":
+		for item in doc.items:
+			if not item.get("product_tax_category"):
+				category = resolve_product_tax_category(item, doc.company)
+				if category:
+					item.product_tax_category = category
 
 	tax_dict = get_tax_data(doc, taxjar_account)
 
