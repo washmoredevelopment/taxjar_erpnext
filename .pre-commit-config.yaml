@@ -54,7 +54,8 @@ repos:
         files: '\.(js|ts|py|md)$'
         args: ['--app', 'taxjar_erpnext']
       - id: bylines
-        exclude: 'README.md|CHANGELOG.md'
+        exclude: '(?i)(README|CHANGELOG)\.md$'
+        args: ['--skip', 'CHANGELOG.md', '--skip', 'README.md']
       - id: clean_customized_doctypes
         args: ['--app', 'taxjar_erpnext']
       - id: validate_customizations
