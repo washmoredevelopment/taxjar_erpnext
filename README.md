@@ -34,6 +34,7 @@ For license information, please see license.txt-->
     <li><a href="#about-the-project">About The Project</a></li>
     <li><a href="#installation">Installation</a></li>
     <li><a href="#configuration">Configuration</a></li>
+    <li><a href="#documentation">Documentation</a></li>
     <li><a href="#acknowledgements">Acknowledgements</a></li>
     <li><a href="#license">License</a></li>
   </ol>
@@ -44,14 +45,17 @@ For license information, please see license.txt-->
 
 TaxJar Integration connects your ERPNext instance with [TaxJar](https://www.taxjar.com/) for automated sales tax calculation and reporting. It handles tax rates, nexus management, and product tax categories to ensure accurate tax compliance.
 
+**Scope:** Sales tax calculation applies to **United States** companies only. For setup details, architecture, and troubleshooting, see the [documentation](docs/index.md).
+
 ### Features
 
 **Tax Calculation**
-- Automatic sales tax calculation on Quotations, Sales Orders, and Sales Invoices
+- Automatic sales tax calculation on Quotations, Sales Orders, and Sales Invoices (US companies only)
 - Nexus-aware — calculates tax for states where you have nexus configured
-- Product tax categories for different tax rates based on product type
-- Sales tax exemption support at document or customer level
-- Line-item tax breakdown with `tax_collectable` and `taxable_amount` per item
+- Product tax categories for different tax rates based on product type (set per company on Item Default)
+- Sales tax exemption support at document or customer level (ERPNext US regional fields)
+- Line-item tax breakdown with `tax_collectable` and `taxable_amount` on **Sales Invoice** lines
+- Mixed carts supported — different product tax codes on one document can yield tax on some lines only
 
 **Multi-Company Support**
 - Separate TaxJar accounts per company
@@ -103,6 +107,8 @@ TaxJar Integration connects your ERPNext instance with [TaxJar](https://www.taxj
    bench --site your-site.localhost migrate
    ```
 
+For full setup, configuration, and integration reference, see [docs/index.md](docs/index.md).
+
 ### Running tests
 
 Load Ambrosia Pie Company fixture data once on your test site, then run pytest from the bench:
@@ -121,9 +127,9 @@ cd frappe-bench && source env/bin/activate && pytest apps/taxjar_erpnext/ --disa
 
 1. Navigate to **TaxJar Account List** in ERPNext
 2. Create a new TaxJar Account for your company
-3. Enter your TaxJar API credentials (Live or Sandbox)
+3. Enable **Enable Tax Calculation**, then enter your TaxJar API credentials (Live or Sandbox). Sandbox Mode and Create TaxJar Transaction require Enable Tax Calculation to be checked first.
 4. Configure your **Tax Account Head** and **Shipping Account Head**
-5. Click **Sync Nexus Addresses** to pull your nexus list from TaxJar
+5. Click **Update Nexus List** to pull your nexus list from TaxJar
 
 ### Non-Nexus State Settings
 
@@ -139,11 +145,17 @@ For businesses that want tax estimates on Quotations for states without nexus:
 
 ### Product Tax Categories
 
-1. Navigate to **Product Tax Category** list
-2. Create categories matching your TaxJar product tax codes
-3. Assign categories to Items to apply correct tax rates
+1. Navigate to **Product Tax Category** list (categories are seeded on install and when tax calculation is first enabled)
+2. Create or adjust categories so Product Tax Code matches your TaxJar product tax codes
+3. On each Item, set **Product Tax Category** on the **Item Default** row for each company (preferred for multi-company setups)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Documentation
+
+- [Setup](docs/setup.md) — prerequisites, configuration, behavior by document type
+- [Integration](docs/integration.md) — hooks, custom fields, API behavior, limitations
+- [Troubleshooting](docs/troubleshooting.md) — common issues, development, and testing
 
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
