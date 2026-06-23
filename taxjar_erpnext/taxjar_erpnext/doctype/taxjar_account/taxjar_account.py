@@ -1,5 +1,8 @@
-# Copyright (c) 2026, Washmore Development, AgriTheory and contributors
+# Copyright (c) 2024, Washmore Development and contributors
 # For license information, please see license.txt
+
+import json
+import os
 
 import frappe
 from frappe import _
@@ -10,6 +13,9 @@ class TaxJarAccount(Document):
 	def validate(self):
 		self.validate_tax_calculation_settings()
 
+	def on_update(self):
+		self.setup_product_tax_categories_if_needed()
+
 	def validate_tax_calculation_settings(self):
 		if not self.taxjar_calculate_tax and (self.taxjar_create_transactions or self.is_sandbox):
 			frappe.throw(
@@ -18,6 +24,16 @@ class TaxJarAccount(Document):
 					"you need to check the <b>Enable Tax Calculation</b> box"
 				)
 			)
+
+	def setup_product_tax_categories_if_needed(self):
+		"""Seed Product Tax Category rows when tax calculation is enabled."""
+		if not self.taxjar_calculate_tax:
+			return
+
+		if frappe.db.count("Product Tax Category"):
+			return
+
+		add_product_tax_categories()
 
 	@frappe.whitelist()
 	def update_nexus_list(self):
@@ -46,5 +62,29 @@ def toggle_tax_category_fields(hidden):
 		hidden,
 	)
 	frappe.set_value(
-		"Custom Field", {"dt": "Item", "fieldname": "product_tax_category"}, "hidden", hidden
+		"Custom Field",
+		{"dt": "Item Default", "fieldname": "product_tax_category"},
+		"hidden",
+		hidden,
 	)
+
+
+def add_product_tax_categories():
+	path = os.path.join(os.path.dirname(__file__), "product_tax_category_data.json")
+
+	if os.path.exists(path):
+		with open(path) as f:
+			tax_categories = json.loads(f.read())
+		create_tax_categories(tax_categories["categories"])
+	else:
+		frappe.log_error("product_tax_category_data.json not found", "TaxJar Account Setup")
+
+
+def create_tax_categories(data):
+	for d in data:
+		if not frappe.db.exists("Product Tax Category", {"product_tax_code": d.get("product_tax_code")}):
+			tax_category = frappe.new_doc("Product Tax Category")
+			tax_category.description = d.get("description")
+			tax_category.product_tax_code = d.get("product_tax_code")
+			tax_category.category_name = d.get("name")
+			tax_category.db_insert()
