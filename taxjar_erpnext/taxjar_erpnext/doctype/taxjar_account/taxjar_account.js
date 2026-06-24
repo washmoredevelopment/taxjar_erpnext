@@ -7,20 +7,20 @@ frappe.ui.form.on('TaxJar Account', {
 		frm.set_query('tax_account_head', function () {
 			return {
 				filters: {
-					'company': frm.doc.company,
-					'is_group': 0
-				}
-			};
-		});
+					company: frm.doc.company,
+					is_group: 0,
+				},
+			}
+		})
 
 		frm.set_query('shipping_account_head', function () {
 			return {
 				filters: {
-					'company': frm.doc.company,
-					'is_group': 0
-				}
-			};
-		});
+					company: frm.doc.company,
+					is_group: 0,
+				},
+			}
+		})
 	},
 
 	refresh: function (frm) {
@@ -31,31 +31,31 @@ frappe.ui.form.on('TaxJar Account', {
 					doc: frm.doc,
 					method: 'update_nexus_list',
 					freeze: true,
-					freeze_message: __('Fetching nexus regions from TaxJar...')
-				});
-			});
+					freeze_message: __('Fetching nexus regions from TaxJar...'),
+				})
+			})
 		}
 	},
 
 	company: function (frm) {
 		// Clear account fields when company changes
 		if (frm.doc.company) {
-			frm.set_value('tax_account_head', '');
-			frm.set_value('shipping_account_head', '');
+			frm.set_value('tax_account_head', '')
+			frm.set_value('shipping_account_head', '')
 		}
 	},
 
 	is_sandbox: function (frm) {
 		// Toggle API key requirements based on sandbox mode
-		frm.toggle_reqd("api_key", frm.doc.taxjar_calculate_tax && !frm.doc.is_sandbox);
-		frm.toggle_reqd("sandbox_api_key", frm.doc.taxjar_calculate_tax && frm.doc.is_sandbox);
+		frm.toggle_reqd('api_key', frm.doc.taxjar_calculate_tax && !frm.doc.is_sandbox)
+		frm.toggle_reqd('sandbox_api_key', frm.doc.taxjar_calculate_tax && frm.doc.is_sandbox)
 	},
 
 	taxjar_calculate_tax: function (frm) {
 		// Toggle requirements when tax calculation is enabled/disabled
-		frm.toggle_reqd("api_key", frm.doc.taxjar_calculate_tax && !frm.doc.is_sandbox);
-		frm.toggle_reqd("sandbox_api_key", frm.doc.taxjar_calculate_tax && frm.doc.is_sandbox);
-		frm.toggle_reqd("tax_account_head", frm.doc.taxjar_calculate_tax);
-		frm.toggle_reqd("shipping_account_head", frm.doc.taxjar_calculate_tax);
-	}
-});
+		frm.toggle_reqd('api_key', frm.doc.taxjar_calculate_tax && !frm.doc.is_sandbox)
+		frm.toggle_reqd('sandbox_api_key', frm.doc.taxjar_calculate_tax && frm.doc.is_sandbox)
+		frm.toggle_reqd('tax_account_head', frm.doc.taxjar_calculate_tax)
+		frm.toggle_reqd('shipping_account_head', frm.doc.taxjar_calculate_tax)
+	},
+})

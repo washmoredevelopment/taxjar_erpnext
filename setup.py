@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Washmore Development, AgriTheory and contributors
+# For license information, please see license.txt
+
 from setuptools import setup, find_packages
 
 with open("requirements.txt") as f:
@@ -15,5 +18,5 @@ setup(
 	packages=find_packages(),
 	zip_safe=False,
 	include_package_data=True,
-	install_requires=install_requires
+	install_requires=install_requires,
 )

@@ -3,6 +3,5 @@
 
 frappe.ui.form.on('Product Tax Category', {
 	// refresh: function(frm) {
-
 	// }
-});
+})
